@@ -135,6 +135,19 @@ export async function decideMenu(ctx: Ctx, purpose: string, extraFacts: (label: 
     ctx.emu.frame();
   }
   let opts = readMenuOptions(ctx);
+  // Regular battle move selection only: relearning and Mimic have different rules.
+  if ((ctx.gs.inBattle === 1 || ctx.gs.inBattle === 2) && ctx.gs.u8('wMoveMenuType') === 0) {
+    const battle = ctx.gs.battle();
+    const names = new Set(battle.player.moves.map((mv) => mv.name));
+    const isMoveMenu = opts.length > 0 && opts.every((o) => names.has(o.text));
+    if (isMoveMenu) {
+      const usable = new Set(battle.player.moves
+        .filter((mv) => mv.pp > 0 && mv.name !== battle.player.disabledMove?.name)
+        .map((mv) => mv.name));
+      opts = opts.filter((o) => usable.has(o.text));
+      if (!opts.length) { tap(ctx, 'B', 12); return 'Close this menu'; }
+    }
+  }
   // "Bring out which POKéMON?" in battle: fainted Pokémon can't be sent out, so they aren't options
   if (ctx.gs.inBattle && isPartyMenu(ctx)) {
     // (nor the one already out: "already in battle" just brings the menu back)

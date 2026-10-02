@@ -107,6 +107,16 @@ export class GameState {
     return out;
   }
 
+  /** Disabled move slot (1-based) in the high nibble, remaining turns in the low nibble. */
+  get disabledMove(): { name: string; turns: number } | null {
+    if (this.inBattle !== 1 && this.inBattle !== 2) return null;
+    const packed = this.u8('wPlayerDisabledMove');
+    const slot = packed >> 4;
+    if (slot < 1 || slot > 4 || !(packed & 15)) return null;
+    const move = this.rom.moves.get(this.m[sym('wBattleMon') + 8 + slot - 1]);
+    return move ? { name: move.name, turns: packed & 15 } : null;
+  }
+
   /** Active battlers (only meaningful while inBattle). */
   battle() {
     const e = sym('wEnemyMon'), p = sym('wBattleMon');
@@ -121,7 +131,7 @@ export class GameState {
       enemyPartyCount: this.u8('wEnemyPartyCount'),
       player: {
         slot: this.u8('wPlayerMonNumber'), species: psp?.name ?? '?', level: this.m[p + 14], hp: this.be16(p + 1), maxHp: this.be16(p + 15),
-        status: STATUS(this.m[p + 4]), types: psp?.types ?? [], moves: this.movesAt(p + 8, p + 25),
+        status: STATUS(this.m[p + 4]), types: psp?.types ?? [], moves: this.movesAt(p + 8, p + 25), disabledMove: this.disabledMove,
       },
     };
   }

@@ -75,7 +75,12 @@ async function decideBattle(ctx: Ctx) {
   // a frozen / sleeping Pokémon can't use its moves (Gen 1: freezing never wears off by itself)
   const cantAct = b.player.status === 'FREEZE' ? 'FROZEN: this Pokémon cannot use any move (the turn is lost). In Gen 1 freezing never wears off by itself: only an ICE HEAL / FULL HEAL / FULL RESTORE, or being hit by a Fire move, thaws it. ' : b.player.status === 'SLEEP' ? 'ASLEEP: this Pokémon cannot use a move until it wakes up (sleep lasts 1-7 turns). ' : '';
   const noEffect = new Set<string>();
-  for (const mv of b.player.moves) {
+  const usableMoves = b.player.moves.filter((mv) => mv.pp > 0 && mv.name !== b.player.disabledMove?.name);
+  if (!usableMoves.length) {
+    opts['Use STRUGGLE'] = 'No usable moves remain (all have no PP or are disabled). FIGHT automatically uses STRUGGLE, which causes recoil damage.';
+    actions['Use STRUGGLE'] = () => { select(ctx, 'FIGHT'); };
+  }
+  for (const mv of usableMoves) {
     const eff = rom.effectiveness(mv.type, b.enemy.types);
     const phys = PHYSICAL.has(mv.type);
     const stab = b.player.types.includes(mv.type);
@@ -219,7 +224,7 @@ async function decideBattle(ctx: Ctx) {
       kind: b.kind,
       enemy: enemyShown,
       enemyTrainerPokemonCount: b.kind === 'trainer' ? b.enemyPartyCount : undefined,
-      active: { name: party[b.player.slot]?.nickname, species: b.player.species, level: b.player.level, hp: `${b.player.hp}/${b.player.maxHp}`, status: b.player.status, types: b.player.types, speed: me.spd },
+      active: { name: party[b.player.slot]?.nickname, species: b.player.species, level: b.player.level, hp: `${b.player.hp}/${b.player.maxHp}`, status: b.player.status, types: b.player.types, speed: me.spd, disabledMove: b.player.disabledMove },
     },
   };
   const goal = b.kind === 'wild' && catching
@@ -248,7 +253,11 @@ function menuFacts(ctx: Ctx) {
     const p = party.find((pp) => label.startsWith(pp.nickname));
     if (p) return `${p.nickname}: ${p.species} Lv${p.level}, ${p.types.join('/')}, HP ${p.hp}/${p.maxHp}${p.hp === 0 ? ' (fainted, unusable)' : ''}.`;
     const mv = moves.get(label.trim());
-    if (mv) return `Move ${mv.name}: ${mv.type}, power ${mv.power}, accuracy ${mv.accuracy}%, ${mv.pp} PP.`;
+    if (mv) {
+      const live = ctx.gs.battle().player.moves.find((m) => m.name === mv.name);
+      const pp = ctx.gs.u8('wMoveMenuType') === 0 && live ? live.pp : mv.pp;
+      return `Move ${mv.name}: ${mv.type}, power ${mv.power}, accuracy ${mv.accuracy}%, ${pp} PP.`;
+    }
     return '';
   };
 }

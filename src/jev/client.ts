@@ -15,7 +15,7 @@ export interface JevCallRecord {
  * Throttled, cached, logged Jev client.
  * - minIntervalMs: never call more often than this
  * - maxPerMinute: hard rolling budget (waits when exceeded)
- * - identical (state, questions) within the cache are answered from cache
+ * - only overworld decisions reuse identical answers; battles and menus always call the backend
  */
 export class Jev {
   readonly backend: JevBackend;
@@ -70,11 +70,13 @@ export class Jev {
   }
 
   async ask(purpose: string, state: JevInput, questions: Record<string, JevQuestion>) {
-    const key = crypto.createHash('sha1').update(JSON.stringify([state, questions])).digest('hex');
+    const key = crypto.createHash('sha1').update(JSON.stringify([purpose, state, questions])).digest('hex');
     const t0 = Date.now();
     // loop-protection sampling only applies to where-to-go decisions; menus, battles and the PC use Jev's top pick
     const explore = this.explore && purpose === 'overworld';
-    let res = explore ? undefined : this.cache.get(key);
+    // A rejected selection can leave the game unchanged. Never replay an old battle/menu answer.
+    const cacheable = purpose === 'overworld' && !explore;
+    let res = cacheable ? this.cache.get(key) : undefined;
     const cached = !!res;
     if (!res) {
       await this.throttle();
@@ -87,7 +89,7 @@ export class Jev {
       }
       this.calls++;
       this.inputTokens += res.usage.inputTokens ?? 0;
-      this.cache.set(key, res);
+      if (cacheable) this.cache.set(key, res);
       if (this.cache.size > 500) this.cache.delete(this.cache.keys().next().value!);
     } else this.cacheHits++;
 

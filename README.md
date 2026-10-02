@@ -151,3 +151,7 @@ SIGINT/SIGTERM saves before exit. No automatic new-game repetition is enabled.
 The viewer shows the latest uncached call time and the elapsed time on every decision.
 These timings include request throttling and retries, rather than GPU inference alone.
 Cached decisions are marked separately and do not replace the latest call time.
+
+### Battle decision safety
+
+The controller reads Disable from live game memory and excludes disabled moves and moves with no PP from regular battle and move-menu choices. When none remain, FIGHT uses STRUGGLE. Move-learning menus are unaffected. Battle and menu decisions always call the model; only overworld decisions reuse cached answers. This answer cache is separate from inference-server prefix caching.
