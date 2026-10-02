@@ -14,6 +14,10 @@ test('strict probabilities reject corrupt responses', () => {
   const rounded = decode('{"A":0.4,"B":0.59}', ['A', 'B']);
   assert.ok(Math.abs(rounded.A + rounded.B - 1) < 1e-10);
   assert.ok(rounded.B > rounded.A);
+  const many = Object.fromEntries(Array.from({ length: 26 }, (_, i) => [optionLabel(i), 0.04]));
+  const normalized = decode(JSON.stringify(many), Object.keys(many));
+  assert.ok(Math.abs(Object.values(normalized).reduce((a,b) => a+b, 0) - 1) < 1e-10);
+  assert.throws(() => decode('{"A":0,"B":0}', ['A', 'B']));
   assert.deepEqual([0, 25, 26, 27, 701].map(optionLabel), ['A', 'Z', 'AA', 'AB', 'ZZ']);
 });
 

@@ -22,7 +22,9 @@ export function decode(content: string, labels: string[]): Record<string, number
     throw new Error('Invalid probability');
   }
   const total = (numbers as number[]).reduce((a, b) => a + b, 0);
-  if (Math.abs(total - 1) > 0.020000001) throw new Error('Probabilities must sum approximately to one');
+  // Two-decimal outputs can accumulate up to half a hundredth per option.
+  const roundingAllowance = Math.max(0.02, labels.length * 0.005) + 1e-9;
+  if (Math.abs(total - 1) > roundingAllowance) throw new Error('Probabilities must sum approximately to one');
   return Object.fromEntries(labels.map(k => [k, value[k] / total]));
 }
 

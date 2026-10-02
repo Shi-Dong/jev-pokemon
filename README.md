@@ -133,7 +133,8 @@ Set `JEV_MODE=endpoint`, `JEV_ENDPOINT` to an OpenAI-compatible chat-completions
 and `JEV_MODEL` to the served model name. Optional `JEV_ENDPOINT_KEY` supplies bearer
 authentication. This backend sends user-only State/Options requests with letter labels,
 temperature zero and `chat_template_kwargs.enable_thinking=false`. Responses must be
-JSON probabilities for every offered label, summing approximately to one (within 2%).
+JSON probabilities for every offered label, summing approximately to one. The rounding allowance is the greater of 2%
+and half a hundredth per option, accounting for two-decimal outputs with many choices.
 Rounded distributions are normalized for harness sampling; argmax is unchanged.
 Raw responses remain in the audit log. Invalid responses fail and
 use the existing request retries; there is no mock fallback.
