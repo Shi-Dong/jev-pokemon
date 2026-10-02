@@ -116,7 +116,7 @@ export class Agent {
     const file = `${this.saveDir}/${name}.state.json`;
     this.ctx.emu.saveState(file);
     fs.writeFileSync(`${this.saveDir}/${name}.memory.json`, JSON.stringify({ mem: { ...this.ctx.mem, stepsInMap: {} }, visited: visitedMaps() }));
-    if (name.startsWith('milestone')) fs.writeFileSync(`${this.saveDir}/latest.txt`, name);
+    fs.writeFileSync(`${this.saveDir}/latest.txt`, name);
     this.ctx.log('save', `saved ${name}`);
   }
 

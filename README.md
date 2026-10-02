@@ -125,3 +125,24 @@ The highlights video (`site/highlights.mp4`) and links are in `site/index.html`.
 - **License.** GPL-2.0-or-later (see [`LICENSE`](LICENSE)), because it builds on the GPL-licensed [serverboy](https://gitlab.com/piglet-plays/serverboy.js) / GameBoy-Online emulator core.
 
 Made by [Christian Mathiesen](https://github.com/christianmat) at [Frigade](https://frigade.com/?utm_source=jev-pokemon&utm_medium=readme).
+
+
+## Self-hosted probability model
+
+Set `JEV_MODE=endpoint`, `JEV_ENDPOINT` to an OpenAI-compatible chat-completions URL,
+and `JEV_MODEL` to the served model name. Optional `JEV_ENDPOINT_KEY` supplies bearer
+authentication. This backend sends user-only State/Options requests with letter labels,
+temperature zero and `chat_template_kwargs.enable_thinking=false`. Responses must be
+JSON probabilities for every offered label, summing approximately to one (within 2%).
+Rounded distributions are normalized for harness sampling; argmax is unchanged.
+Raw responses remain in the audit log. Invalid responses fail and
+use the existing request retries; there is no mock fallback.
+`logs/model-responses.jsonl` preserves requests and raw responses without auth headers.
+
+Set `HOST` to the server's Tailnet IP and `PORT=8787` for cross-machine browser access.
+The viewer uses a same-origin WebSocket and exposes `/api/status` for health checks.
+Start with `npm start -- --speed 1 --resume`. With no save, this starts a new adventure;
+otherwise it resumes the latest completed save, including autosaves and manual saves.
+Set `STUCK_RELOAD=Infinity` to prevent automatic checkpoint rollback. Existing exploration
+can sample alternatives when stuck. Autosaves occur every five minutes and at milestones;
+SIGINT/SIGTERM saves before exit. No automatic new-game repetition is enabled.

@@ -18,6 +18,7 @@ const flag = (n: string) => args.includes(`--${n}`);
 const opt = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 
 const ROM_PATH = opt('rom', process.env.ROM_PATH ?? 'roms/red.gb')!;
+const HOST = process.env.HOST ?? '127.0.0.1';
 const PORT = +(opt('port', process.env.PORT ?? '8787')!);
 const HEADLESS = flag('headless');
 const MAX_STEPS = +(opt('steps', '0')!);
@@ -95,6 +96,7 @@ jev.onCall = (r) => { lastCall = r; updateOverlay(r); broadcast({
 const agent = new Agent(ctx);
 const load = opt('load') ?? (flag('resume') && fs.existsSync('saves/latest.txt') ? fs.readFileSync('saves/latest.txt', 'utf8').trim() : undefined);
 if (load) agent.load(load);
+for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { agent.save('shutdown'); process.exit(0); });
 
 const sleepCell = new Int32Array(new SharedArrayBuffer(4));
 const SLICES_PER_SEC = 4194304 / (emu.core.baseCPUCyclesPerIteration || 33554.432);
@@ -133,31 +135,34 @@ function status() {
     milestone: { index, total: MILESTONES.length, id: m?.id, goal: m?.goal },
     party: gs.party().map((p) => ({ name: p.nickname, species: p.species, level: p.level, hp: p.hp, maxHp: p.maxHp, status: p.status })),
     jev: { backend: jev.backend.name, calls: jev.calls, cacheHits: jev.cacheHits, inputTokens: jev.inputTokens, minIntervalMs: jev.minIntervalMs, maxPerMinute: jev.maxPerMinute },
-    frames: emu.frames,
+    frames: emu.frames, paused, gameComplete: !!gameDoneAt,
   };
 }
 
 if (!HEADLESS) {
   const server = http.createServer((req, res) => {
+    if (req.url === '/api/status') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ...status(), paused, gameComplete: !!gameDoneAt })); return; }
     const file = req.url === '/' ? 'index.html' : req.url!.slice(1);
-    const p = path.join('web', path.normalize(file));
-    if (!p.startsWith('web') || !fs.existsSync(p)) { res.writeHead(404); res.end(); return; }
+    const webRoot = path.resolve('web');
+    const p = path.resolve(webRoot, file);
+    if (!p.startsWith(webRoot + path.sep) || !fs.existsSync(p)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': p.endsWith('.html') ? 'text/html' : 'text/plain' });
     fs.createReadStream(p).pipe(res);
   });
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ server, verifyClient: ({ origin, req }: { origin: string; req: http.IncomingMessage }) => !origin || origin === `http://${req.headers.host}` });
   wss.on('connection', (ws) => {
     sockets.add(ws);
     ws.send(JSON.stringify({ type: 'history', events }));
     ws.send(JSON.stringify(status()));
     ws.on('message', (d) => {
-      const m = JSON.parse(String(d));
-      if (m.cmd === 'pause') paused = !paused;
+      let m;
+      try { m = JSON.parse(String(d)); } catch { return; }
+      if (m.cmd === 'pause') { paused = !paused; broadcast(status()); }
       if (m.cmd === 'save') agent.save(`manual-${Date.now()}`);
     });
     ws.on('close', () => sockets.delete(ws));
   });
-  server.listen(PORT, () => console.log(`viewer: http://localhost:${PORT}  (jev backend: ${jev.backend.name})`));
+  server.listen(PORT, HOST, () => console.log(`viewer: http://${HOST}:${PORT}  (jev backend: ${jev.backend.name})`));
 }
 
 let paused = false;

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import type { JevBackend, JevQuestion, JevInput, JevResult, JevAnswer } from './types.js';
 import { MockJev } from './mock.js';
 import { GatewayJev } from './gateway.js';
+import { ProbabilityJev } from './probability.js';
 
 export interface JevCallRecord {
   n: number; at: number; purpose: string; latencyMs: number; cached: boolean;
@@ -33,7 +34,8 @@ export class Jev {
 
   constructor(opts: { mode?: string; minIntervalMs?: number; maxPerMinute?: number; logFile?: string } = {}) {
     const mode = opts.mode ?? process.env.JEV_MODE ?? 'mock';
-    this.backend = mode === 'gateway' ? new GatewayJev() : new MockJev(0.6, +(process.env.JEV_MOCK_LATENCY_MS ?? 0));
+    if (!['endpoint', 'gateway', 'mock'].includes(mode)) throw new Error(`Unknown JEV_MODE: ${mode}`);
+    this.backend = mode === 'endpoint' ? new ProbabilityJev() : mode === 'gateway' ? new GatewayJev() : new MockJev(0.6, +(process.env.JEV_MOCK_LATENCY_MS ?? 0));
     this.minIntervalMs = opts.minIntervalMs ?? +(process.env.JEV_MIN_INTERVAL_MS ?? 300);
     this.maxPerMinute = opts.maxPerMinute ?? +(process.env.JEV_MAX_PER_MIN ?? 90);
     this.log = fs.createWriteStream(opts.logFile ?? 'logs/jev-calls.jsonl', { flags: 'a' });

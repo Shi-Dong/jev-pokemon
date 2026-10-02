@@ -67,5 +67,6 @@ for (const line of read('pokered.sym').split('\n')) {
   }
 }
 
+fs.mkdirSync("src/data", { recursive: true });
 fs.writeFileSync('src/data/generated.json', JSON.stringify({ maps, events, charmap, sprites, sym }));
 console.log(`maps=${Object.keys(maps).length} events=${Object.keys(events).length} chars=${Object.keys(charmap).length} syms=${Object.keys(sym).length}`);
