@@ -147,3 +147,7 @@ otherwise it resumes the latest completed save, including autosaves and manual s
 Set `STUCK_RELOAD=Infinity` to prevent automatic checkpoint rollback. Existing exploration
 can sample alternatives when stuck. Autosaves occur every five minutes and at milestones;
 SIGINT/SIGTERM saves before exit. No automatic new-game repetition is enabled.
+
+The viewer shows the latest uncached call time and the elapsed time on every decision.
+These timings include request throttling and retries, rather than GPU inference alone.
+Cached decisions are marked separately and do not replace the latest call time.

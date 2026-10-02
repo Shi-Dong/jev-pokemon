@@ -65,6 +65,7 @@
         <button id="save">Save state</button>
       </div>
       <div class="stats">
+        <div class="stat" title="Elapsed decision request time, including rate-limit waits and retries. Cached results do not make a model call."><b id="latency">Waiting…</b><span>latest model call</span></div>
         <div class="stat"><b id="calls">0</b><span>Jev calls</span></div>
         <div class="stat"><b id="cache">0</b><span>cache hits</span></div>
         <div class="stat"><b id="tokens">0</b><span>input tokens</span></div>
@@ -83,6 +84,7 @@
   <section class="side">
     <div class="card">
       <div class="label">Jev decisions (latest first)</div>
+      <div class="ev">Call time includes rate-limit waits and retries. Cached decisions make no model call.</div>
       <div id="feed"></div>
     </div>
     <div class="card">
@@ -127,14 +129,16 @@ function status(s) {
   $('party').innerHTML = s.party.map((p) => `<div class="mon"><div>${esc(p.name)} <span class="num">Lv${p.level}</span></div>
     <div class="hp"><i style="width:${Math.round(100 * p.hp / Math.max(1, p.maxHp))}%"></i></div><div class="num">${p.hp}/${p.maxHp}</div></div>`).join('') || '<span class="ev">none yet</span>';
 }
+function formatLatency(ms) { return ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s'; }
 function decision({ r, stats }) {
+  if (!r.cached && Number.isFinite(r.latencyMs)) $('latency').textContent = formatLatency(r.latencyMs);
   $('calls').textContent = stats.calls; $('cache').textContent = stats.cacheHits; $('tokens').textContent = stats.inputTokens.toLocaleString();
   const a = Object.values(r.answers)[0];
   const picked = Object.values(r.picked)[0];
   const probs = a && a.probabilities ? Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 5) : [];
   const el = document.createElement('div');
   el.className = 'dec';
-  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'cached' : r.latencyMs + 'ms'}</span></div>
+  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'Cached · no model call' : 'Call time: ' + formatLatency(r.latencyMs) + ' (' + Math.round(r.latencyMs) + ' ms)'}</span></div>
     <div class="pick">${esc(picked)}</div>` + probs.map(([k, p]) => `<div class="opt ${k === picked ? 'on' : ''}"><div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i><span>${esc(k)}</span></div><div class="num">${(p * 100).toFixed(0)}%</div></div>`).join('');
   $('feed').prepend(el);
   while ($('feed').children.length > 60) $('feed').lastChild.remove();
