@@ -8,6 +8,8 @@ import { mapName } from '../game/symbols.js';
 
 export interface Memory {
   visitedMaps: Record<string, number>;
+  /** Last observed stationary blockers, retained for routing after leaving a map and across saves. */
+  stationaryBlockers?: Record<string, string[]>;
   talked: Record<string, number>;       // "MAP:npcIndex" -> count
   usedTargets: Record<string, number>;  // "MAP:targetKey" -> count
   dialog: string[];                     // recent dialog lines

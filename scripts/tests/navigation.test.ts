@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { connectionRoutes, storyBlockedEdges, recoveryChoice } from '../../src/agent/navigation.js';
 import { MILESTONES, restoreVisited } from '../../src/knowledge/milestones.js';
 import type { Grid } from '../../src/game/world.js';
-import type { RegionGraph } from '../../src/game/regions.js';
+import { RegionGraph } from '../../src/game/regions.js';
 import type { MapData, Rom } from '../../src/game/rom.js';
 import type { GameState } from '../../src/game/state.js';
 
@@ -46,4 +46,21 @@ test('loop recovery prefers useful less-repeated routes over high-probability si
   assert.equal(recoveryChoice(options, p, k => k === 'cut' ? 3 : 0), 'east');
   assert.equal(recoveryChoice(options, p, () => 0), 'cut');
   assert.equal(recoveryChoice(options.slice(0, 1), p, () => 0), undefined);
+});
+
+test('refining another map retains remembered stationary blockers', () => {
+  const rom = {maps: new Map<number, MapData>(), spinners: new Map()} as unknown as Rom;
+  const rg = new RegionGraph(rom);
+  for (const id of [1, 2]) {
+    rom.maps.set(id, {id, name: 'BLOCKER_TEST_' + id, warps: [], objects: [], connections: []} as unknown as MapData);
+    (rg as unknown as {grids: Map<number, unknown>}).grids.set(id, {w: 5, h: 1, walk: () => true, tile: () => 0, ledge: () => false, pairBlocked: () => false});
+  }
+  const blocker = new Set(['2,0']);
+  rg.refine(1, blocker);
+  assert.notEqual(rg.regionAt(1, 0, 0), rg.regionAt(1, 4, 0));
+  rg.refine(2, new Set(), undefined, '', new Map([[1, {key: 'observed', blocked: blocker}]]));
+  assert.notEqual(rg.regionAt(1, 0, 0), rg.regionAt(1, 4, 0));
+  // A new observation that the obstruction is gone reopens the component.
+  rg.refine(1, new Set());
+  assert.equal(rg.regionAt(1, 0, 0), rg.regionAt(1, 4, 0));
 });

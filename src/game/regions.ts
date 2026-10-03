@@ -113,14 +113,20 @@ export class RegionGraph {
   private extraKey = '';
   private layoutMode = false;
   /** Re-split one map's regions around occupied squares (only when they changed), then relink everything. */
-  refine(map: number, blocked: Set<string>, walk?: (x: number, y: number) => boolean, walkKey = '', others?: Map<number, { walk: (x: number, y: number) => boolean; key: string }>) {
+  refine(map: number, blocked: Set<string>, walk?: (x: number, y: number) => boolean, walkKey = '', others?: Map<number, { walk?: (x: number, y: number) => boolean; key: string; blocked?: Set<string> }>) {
     // `others`: how other maps looked when last seen (gates moved by switches), used instead of their default layout
-    const othersKey = others ? [...others.entries()].map(([m, o]) => `${m}:${o.key}`).join('/') : '';
+    const othersKey = others ? [...others.entries()].map(([m, o]) => `${m}:${o.key}:${[...(o.blocked ?? [])].sort().join(';')}`).join('/') : '';
     const key = `${map}|${[...blocked].sort().join(';')}|${walkKey}|${othersKey}`;
     if (key === this.extraKey) return;
     this.extraKey = key;
     this.extraBlocked.clear(); this.liveWalk.clear();
-    for (const [m, o] of others ?? []) if (m !== map) this.liveWalk.set(m, o.walk);
+    for (const [m, o] of others ?? []) if (m !== map) {
+      if (o.walk) this.liveWalk.set(m, o.walk);
+      if (o.blocked) {
+        const boulders = this.rom.maps.get(m)?.objects.filter(obj => obj.sprite === BOULDER_SPRITE).map(obj => `${obj.x},${obj.y}`) ?? [];
+        this.extraBlocked.set(m, new Set([...o.blocked, ...boulders]));
+      }
+    }
     this.extraBlocked.set(map, blocked);
     this.layoutMode = walkKey === 'layout';
     if (walk) this.liveWalk.set(map, walk);

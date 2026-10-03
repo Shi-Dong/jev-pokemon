@@ -125,6 +125,8 @@ export function buildCandidates(ctx: Ctx): Candidate[] {
       const o = md?.objects[sp.index - 1];
       if (!sp.hidden && o && o.movement === 0xff && o.item == null) stay.add(`${sp.x},${sp.y}`);
     }
+    // Boulders reset to their ROM positions when a floor is left; only remember persistent people.
+    (mem.stationaryBlockers ??= {})[gs.mapId] = [...stay].filter(square => !gs.sprites().some(sp => SPRITES[sp.picture] === 'BOULDER' && square === `${sp.x},${sp.y}`));
     // live walkability too (doors opened/closed by events differ from the map's static data)
     // a locked Silph Co. door counts as passable for routing once the CARD KEY is in the bag (it opens with A)
     const keyDoor = hasCardKey(gs) ? (x: number, y: number) => cardKeyDoor(gs, g, x, y) : () => false;
@@ -139,7 +141,12 @@ export function buildCandidates(ctx: Ctx): Candidate[] {
     // switch-gated buildings (Pokémon Mansion): model every floor's gates from the game's switch flag
     if (SWITCH_GATES.some((x) => x.map === gs.mapName)) rg.setSwitch(gs.event(SWITCH_EVENT));
     // switch-gated floors are modelled exactly from the switch flag: never use (possibly stale) snapshots for them
-    const others = new Map([...seenWalk].filter(([id]) => !SWITCH_GATES.some((x) => x.map === mapName(id))));
+    const others: Map<number, { walk?: (x: number, y: number) => boolean; key: string; blocked?: Set<string> }> = new Map([...seenWalk].filter(([id]) => !SWITCH_GATES.some((x) => x.map === mapName(id))));
+    for (const [id, squares] of Object.entries(mem.stationaryBlockers ?? {})) {
+      if (SWITCH_GATES.some(x => x.map === mapName(Number(id)))) continue;
+      const observed = others.get(Number(id));
+      others.set(Number(id), { ...observed, key: observed?.key ?? '', blocked: new Set(squares) });
+    }
     rg.refine(gs.mapId, stay, walk, wk, others);
   }
   const need = missingNeed(m, gs);
