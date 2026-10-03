@@ -155,3 +155,5 @@ Cached decisions are marked separately and do not replace the latest call time.
 ### Battle decision safety
 
 The controller reads Disable from live game memory and excludes disabled moves and moves with no PP from regular battle and move-menu choices. When none remain, FIGHT uses STRUGGLE. Move-learning menus are unaffected. Battle and menu decisions always call the model; only overworld decisions reuse cached answers. This answer cache is separate from inference-server prefix caching.
+
+Valid, finite option weights in [0, 1] are normalized when their total is positive, even if the total differs from one. Large corrections emit a probability-normalization warning; original endpoint responses remain in the raw response log. Malformed JSON, duplicate/missing/unknown labels, negative or out-of-range weights, and all-zero outputs are rejected.

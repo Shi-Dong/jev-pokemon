@@ -7,7 +7,7 @@ import { Jev } from '../../src/jev/client.js';
 
 test('strict probabilities reject corrupt responses', () => {
   assert.deepEqual(decode('{"A":0.2,"B":0.8}', ['A', 'B']), { A: 0.2, B: 0.8 });
-  for (const bad of ['[]', 'null', '{"A":true,"B":0}', '{"A":0.5}', '{"A":0.2,"B":0.2}',
+  for (const bad of ['[]', 'null', '{"A":true,"B":0}', '{"A":0.5}',
     '{"A":1,"B":-1}', '{"A":1,"A":0,"B":1}', '{"A":1e400,"B":0}', '```json\n{"A":1,"B":0}\n```']) {
     assert.throws(() => decode(bad, ['A', 'B']), bad);
   }
@@ -17,6 +17,12 @@ test('strict probabilities reject corrupt responses', () => {
   const many = Object.fromEntries(Array.from({ length: 26 }, (_, i) => [optionLabel(i), 0.04]));
   const normalized = decode(JSON.stringify(many), Object.keys(many));
   assert.ok(Math.abs(Object.values(normalized).reduce((a,b) => a+b, 0) - 1) < 1e-10);
+  assert.deepEqual(decode('{"A":0.2,"B":0.2}', ['A', 'B']), { A: 0.5, B: 0.5 });
+  const under = decode('{"A":0.6,"B":0.3}', ['A', 'B']);
+  assert.ok(under.A > under.B);
+  assert.ok(Math.abs(under.A + under.B - 1) < 1e-10);
+  const over = decode('{"A":0.8,"B":0.8}', ['A', 'B']);
+  assert.deepEqual(over, { A: 0.5, B: 0.5 });
   assert.throws(() => decode('{"A":0,"B":0}', ['A', 'B']));
   assert.deepEqual([0, 25, 26, 27, 701].map(optionLabel), ['A', 'Z', 'AA', 'AB', 'ZZ']);
 });
@@ -32,7 +38,7 @@ test('HTTP adapter survives the actual Jev consumer and maps native action keys'
     assert.equal(body.messages[0].role, 'user');
     assert.match(body.messages[0].content, /A\. move-1: Tackle/);
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"A":0.25,"B":0.75}' } }],
+    res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"A":0.225,"B":0.675}' } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 } }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));

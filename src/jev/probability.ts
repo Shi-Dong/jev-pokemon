@@ -22,9 +22,8 @@ export function decode(content: string, labels: string[]): Record<string, number
     throw new Error('Invalid probability');
   }
   const total = (numbers as number[]).reduce((a, b) => a + b, 0);
-  // Two-decimal outputs can accumulate up to half a hundredth per option.
-  const roundingAllowance = Math.max(0.02, labels.length * 0.005) + 1e-9;
-  if (Math.abs(total - 1) > roundingAllowance) throw new Error('Probabilities must sum approximately to one');
+  // Model outputs can have imperfect total mass. Preserve relative weights and ranking.
+  if (!(total > 0)) throw new Error('Probability total must be positive');
   return Object.fromEntries(labels.map(k => [k, value[k] / total]));
 }
 
@@ -60,6 +59,10 @@ export class ProbabilityJev implements JevBackend {
       const content = completion?.message?.content;
       if (typeof content !== 'string') throw new Error('Missing probability JSON');
       const probabilities = decode(content, labels);
+      const rawTotal = Object.values(JSON.parse(content) as Record<string, number>).reduce((a, b) => a + b, 0);
+      if (Math.abs(rawTotal - 1) > Math.max(0.02, labels.length * 0.005) + 1e-9) {
+        console.warn(`[probability-normalization] question=${id} rawTotal=${rawTotal} options=${labels.length}; normalized to 1`);
+      }
       const mapped = Object.fromEntries(options.map(([key], i) => [key, probabilities[labels[i]]]));
       const choice = options.reduce((best, option, i) => probabilities[labels[i]] > mapped[best] ? option[0] : best, options[0][0]);
       answers[id] = { type: 'choice', choice, probabilities: mapped };
