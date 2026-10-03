@@ -161,3 +161,5 @@ Valid, finite option weights in [0, 1] are normalized when their total is positi
 Single-option questions are resolved by the shared request client without inference, including direct overworld requests. These are controller selections, with no fabricated model probabilities or model-call counts. Mixed requests send only questions that need a decision to the model.
 
 The viewer shows input tokens for the latest model call and each uncached decision, alongside the cumulative total across calls since the harness restart. Cached decisions do not replace the latest-call token count.
+
+Per-call usage is included in live decision messages and the latest-call count is restored from status on reconnect. The viewer also supports already-running older servers by subtracting consecutive cumulative usage totals; no server restart is required for this display fix.

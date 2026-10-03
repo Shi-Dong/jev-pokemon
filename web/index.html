@@ -99,6 +99,7 @@ const $ = (id) => document.getElementById(id);
 const ctx = $('screen').getContext('2d');
 const img = ctx.createImageData(160, 144);
 let ws;
+let previousUsage = null;
 function connect() {
   ws = new WebSocket(`ws://${location.host}`);
   ws.binaryType = 'arraybuffer';
@@ -120,6 +121,8 @@ function connect() {
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function status(s) {
+  if (Number.isFinite(s.jev.latestCallInputTokens)) $('callTokens').textContent = s.jev.latestCallInputTokens.toLocaleString();
+  previousUsage = { calls: s.jev.calls, inputTokens: s.jev.inputTokens };
   $('backend').textContent = `Jev backend: ${s.jev.backend}`;
   $('throttle').textContent = `throttle ≥${s.jev.minIntervalMs}ms · ≤${s.jev.maxPerMinute}/min`;
   $('calls').textContent = s.jev.calls; $('cache').textContent = s.jev.cacheHits;
@@ -132,7 +135,13 @@ function status(s) {
 }
 function formatLatency(ms) { return ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s'; }
 function decision({ r, stats }) {
-  if (!r.cached && Number.isFinite(r.inputTokens)) $('callTokens').textContent = r.inputTokens.toLocaleString();
+  // Older running servers omit per-call usage; consecutive totals still give exact usage.
+  const deltaTokens = previousUsage && stats.calls === previousUsage.calls + 1
+    ? stats.inputTokens - previousUsage.inputTokens : undefined;
+  const callInputTokens = Number.isFinite(r.inputTokens) ? r.inputTokens
+    : Number.isFinite(deltaTokens) && deltaTokens >= 0 ? deltaTokens : undefined;
+  previousUsage = { calls: stats.calls, inputTokens: stats.inputTokens };
+  if (!r.cached && Number.isFinite(callInputTokens)) $('callTokens').textContent = callInputTokens.toLocaleString();
   if (!r.cached && Number.isFinite(r.latencyMs)) $('latency').textContent = formatLatency(r.latencyMs);
   $('calls').textContent = stats.calls; $('cache').textContent = stats.cacheHits; $('tokens').textContent = stats.inputTokens.toLocaleString();
   const a = Object.values(r.answers)[0];
@@ -140,7 +149,7 @@ function decision({ r, stats }) {
   const probs = a && a.probabilities ? Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 5) : [];
   const el = document.createElement('div');
   el.className = 'dec';
-  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'Cached · no model call' : 'Call time: ' + formatLatency(r.latencyMs) + ' (' + Math.round(r.latencyMs) + ' ms) · Input: ' + (Number.isFinite(r.inputTokens) ? r.inputTokens.toLocaleString() : '—') + ' tokens'}</span></div>
+  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'Cached · no model call' : 'Call time: ' + formatLatency(r.latencyMs) + ' (' + Math.round(r.latencyMs) + ' ms) · Input: ' + (Number.isFinite(callInputTokens) ? callInputTokens.toLocaleString() : '—') + ' tokens'}</span></div>
     <div class="pick">${esc(picked)}</div>` + probs.map(([k, p]) => `<div class="opt ${k === picked ? 'on' : ''}"><div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i><span>${esc(k)}</span></div><div class="num">${(p * 100).toFixed(0)}%</div></div>`).join('');
   $('feed').prepend(el);
   while ($('feed').children.length > 60) $('feed').lastChild.remove();

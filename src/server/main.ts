@@ -87,9 +87,10 @@ function updateOverlay(r?: { n: number; purpose: string; picked: Record<string, 
   streamer.setPanel(lines);
 }
 
+let latestCallInputTokens: number | null = null;
 let lastCall: Parameters<typeof updateOverlay>[0] | null = null;
-jev.onCall = (r) => { lastCall = r; updateOverlay(r); broadcast({
-  type: 'jev', r: { n: r.n, purpose: r.purpose, latencyMs: r.latencyMs, cached: r.cached, picked: r.picked, answers: r.answers, backend: r.backend },
+jev.onCall = (r) => { if (!r.cached) latestCallInputTokens = r.inputTokens; lastCall = r; updateOverlay(r); broadcast({
+  type: 'jev', r: { n: r.n, purpose: r.purpose, latencyMs: r.latencyMs, cached: r.cached, inputTokens: r.inputTokens, picked: r.picked, answers: r.answers, backend: r.backend },
   stats: { calls: jev.calls, cacheHits: jev.cacheHits, inputTokens: jev.inputTokens },
 }); };
 
@@ -134,7 +135,7 @@ function status() {
     type: 'status', map: gs.mapName, x: gs.x, y: gs.y, badges: gs.badgeCount, money: gs.money,
     milestone: { index, total: MILESTONES.length, id: m?.id, goal: m?.goal },
     party: gs.party().map((p) => ({ name: p.nickname, species: p.species, level: p.level, hp: p.hp, maxHp: p.maxHp, status: p.status })),
-    jev: { backend: jev.backend.name, calls: jev.calls, cacheHits: jev.cacheHits, inputTokens: jev.inputTokens, minIntervalMs: jev.minIntervalMs, maxPerMinute: jev.maxPerMinute },
+    jev: { backend: jev.backend.name, calls: jev.calls, cacheHits: jev.cacheHits, inputTokens: jev.inputTokens, latestCallInputTokens, minIntervalMs: jev.minIntervalMs, maxPerMinute: jev.maxPerMinute },
     frames: emu.frames, paused, gameComplete: !!gameDoneAt,
   };
 }
