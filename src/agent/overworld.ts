@@ -1,6 +1,7 @@
 import type { Ctx } from './context.js';
 import { tap, situation, regionGraph, weakTeamNote } from './context.js';
 import type { Agent } from './agent.js';
+import { connectionRoutes, storyBlockedEdges, recoveryChoice } from './navigation.js';
 import { buildGrid, findPath, DIRS, type Dir, type Grid, type Step } from '../game/world.js';
 import { sym, mapName } from '../game/symbols.js';
 import gen from '../data/generated.json' with { type: 'json' };
@@ -27,7 +28,7 @@ type Target =
   | { kind: 'push'; x: number; y: number; dir: Dir }
   | { kind: 'item'; name: string }
   | { kind: 'toss'; name: string }
-  | { kind: 'exit'; dir: Dir; dest: number }
+  | { kind: 'exit'; dir: Dir; dest: number; region: string }
   | { kind: 'npc'; index: number; x: number; y: number; sprite: string }
   | { kind: 'sign'; x: number; y: number }
   | { kind: 'grass' }
@@ -164,7 +165,7 @@ export function buildCandidates(ctx: Ctx): Candidate[] {
   const needsItem = !!need;
   const objMaps = (need ? need.maps : m?.maps ?? []).map((n) => Object.entries((gen as any).maps).find(([, v]: any) => v.name === n)?.[0]).filter(Boolean).map(Number);
   // exits that stopped us at least twice are left out of route distances until one works again
-  const skip = new Set(Object.entries(mem.blockedEdges ?? {}).filter(([, n]) => n >= 2).map(([e]) => e));
+  const skip = new Set([...storyBlockedEdges(rom, rg, gs), ...Object.entries(mem.blockedEdges ?? {}).filter(([, n]) => n >= 2).map(([e]) => e)]);
   // the objective's area: a specific spot when the milestone gives one (a map can have unconnected parts)
   const at = need ? need.at : m?.at ?? gymLeaderSpot(rom, m?.maps ?? []) ?? goalItemSpot(rom, m?.maps ?? [], m?.goal ?? '');
   const atMap = at ? objMaps.find((id) => mapName(id) === at.map) : undefined;
@@ -413,28 +414,16 @@ export function buildCandidates(ctx: Ctx): Candidate[] {
     add(`Drop through the hole at (${h.x},${h.y})`, `A hole in the floor: stepping on it drops you down to ${h.to}. ${routeFacts(to.id, tr ? [tr] : [])} ${visitFacts(to.id)}`, { kind: 'warp', x: h.x, y: h.y, dest: to.id }, path);
   }
 
-  // Map-edge connections
+  // Keep each distinct landing area: the nearest crossing can enter the wrong side of a ledge.
   for (const c of md?.connections ?? []) {
     const dir: Dir = c.dir === 'north' ? 'up' : c.dir === 'south' ? 'down' : c.dir === 'west' ? 'left' : 'right';
-    const allowExit = (x: number, y: number) =>
-      (dir === 'up' && y === -1) || (dir === 'down' && y === g.h) || (dir === 'left' && x === -1) || (dir === 'right' && x === g.w);
     const name = mapName(c.map);
-    // only offer edge exits that land on a walkable square of the next map (not water/cliffs)
-    const landsOk = (x: number, y: number) => {
-      const ix = Math.min(Math.max(x, 0), g.w - 1), iy = Math.min(Math.max(y, 0), g.h - 1);
-      return !!md && !!rg.connectionTarget(md, c, ix, iy);
-    };
-    // walking (not surfing) can't step from land onto water across the edge either
-    const exitGoal = (x: number, y: number) => {
-      if (!allowExit(x, y) || !landsOk(x, y)) return false;
-      const ix = Math.min(Math.max(x, 0), g.w - 1), iy = Math.min(Math.max(y, 0), g.h - 1);
-      return !(md && !g.water(ix, iy) && rg.landsOnWater(md, c, ix, iy));
-    };
-    const path2 = findPath(g, px, py, exitGoal, { blocked, allowExit: exitGoal, grassCost: 1, surf });
-    const inside = path2 && path2.length ? (path2.length > 1 ? path2[path2.length - 2] : { x: px, y: py }) : null;
-    const destRegion = inside && md ? rg.connectionTarget(md, c, inside.x, inside.y) : null;
-    destRegionsByKey.set(`e:${dir}`, destRegion ? [destRegion] : []);
-    add(`Go ${c.dir} to ${name}`, `Walk off the ${c.dir} edge of the map into ${name}. ${routeFacts(c.map, destRegion ? [destRegion] : [])}${svc(destRegion ? [destRegion] : [])} ${visitFacts(c.map)}${leaveNote}`, { kind: 'exit', dir, dest: c.map }, path2);
+    const routes = connectionRoutes(g, md!, c, rg, px, py, blocked, surf);
+    for (const { region, path, inside } of routes) {
+      destRegionsByKey.set(`e:${dir}:${region}`, [region]);
+      const via = routes.length > 1 ? ` via (${inside.x},${inside.y})` : '';
+      add(`Go ${c.dir} to ${name}${via}`, `Walk off the ${c.dir} edge of the map into ${name}. ${routeFacts(c.map, [region])}${svc([region])} ${visitFacts(c.map)}${leaveNote}`, { kind: 'exit', dir, dest: c.map, region }, path);
+    }
   }
 
   // NPCs / objects
@@ -568,7 +557,16 @@ export function buildCandidates(ctx: Ctx): Candidate[] {
       const goal = (sx: number, sy: number) => adj(sx, sy, x, y);
       const path = goal(px, py) ? [] : findPath(g, px, py, goal, { blocked, maxNodes: 4000 });
       const r = rg.regionAt(gs.mapId, x, y);
-      add(`Use CUT on the tree at (${x},${y})`, `A small tree that can be cut down with CUT. ${routeFacts(gs.mapId, r ? [r] : [])}`, { kind: 'cut', x, y }, path);
+      // Look beyond this tree using a local hypothetical grid. The global graph already assumes CUT,
+      // so its "same distance" annotation alone hides the prerequisite from the model.
+      const opened: Grid = { ...g, walkable: (sx, sy) => (sx === x && sy === y) || g.walkable(sx, sy) };
+      const unlocks = (md?.connections ?? []).filter(c => {
+        const useful = (grid: Grid) => connectionRoutes(grid, md!, c, rg, px, py, blocked, surf)
+          .some(route => (dist.get(route.region) ?? Infinity) < hereHops);
+        return !useful(g) && useful(opened);
+      }).map(c => mapName(c.map));
+      const fact = unlocks.length ? `Leads toward the objective by opening the route to ${unlocks.join(', ')}.` : routeFacts(gs.mapId, r ? [r] : []);
+      add(`Use CUT on the tree at (${x},${y})`, `A small tree that can be cut down with CUT. ${fact} Leaving this map restores the tree.`, { kind: 'cut', x, y }, path);
     }
   }
   if (caps.surf && !surfing) {
@@ -1365,11 +1363,15 @@ export async function overworldStep(ctx: Ctx, agent: Agent) {
   let key = ans.choice;
   const triedN = (k: string) => { const cc = pool.find((x) => x.key === k); return cc ? tried[tk(cc)] ?? 0 : 0; };
   if (triedN(key) >= 3 && ans.probabilities) {
-    const alts = Object.entries(ans.probabilities).filter(([k]) => k !== key);
-    const total = alts.reduce((a, [, p]) => a + p + 0.05, 0);
-    let r = Math.random() * total;
-    for (const [k, p] of alts) { r -= p + 0.05; if (r <= 0) { key = k; break; } }
-    ctx.log('info', `"${ans.choice}" already tried ${triedN(ans.choice)}x with no change → trying "${key}" instead`);
+    const useful = recoveryChoice(pool, ans.probabilities, triedN);
+    if (useful) {
+      key = useful;
+      ctx.log('info', `"${ans.choice}" repeatedly tried → following useful route "${key}" instead`);
+    } else {
+      // No verified route here: try the least-repeated alternative, retaining the model's ranking.
+      const alts = pool.filter(c => c.key !== key).sort((a, b) => triedN(a.key) - triedN(b.key) || (ans.probabilities![b.key] ?? 0) - (ans.probabilities![a.key] ?? 0));
+      if (alts.length) key = alts[0].key;
+    }
   }
   const c = pool.find((k) => k.key === key)!;
   if (!exempt(c)) tried[tk(c)] = (tried[tk(c)] ?? 0) + 1;
@@ -1393,8 +1395,8 @@ async function runChosen(ctx: Ctx, c: Candidate, agent: Agent, battleInterrupt: 
   const goal = c.path[c.path.length - 1];
   const distTo = () => (goal ? Math.abs(ctx.gs.x - goal.x) + Math.abs(ctx.gs.y - goal.y) : 0);
   const distStart = distTo();
-  const tg = c.target as { kind: string; x?: number; y?: number; dir?: string };
-  const edges = (destRegionsByKey.get(tg.kind === 'warp' ? `w:${tg.x},${tg.y}` : `e:${tg.dir}`) ?? []).map((r) => `${fromRegion}>${r}`);
+  const tg = c.target as { kind: string; x?: number; y?: number; dir?: string; region?: string };
+  const edges = (destRegionsByKey.get(tg.kind === 'warp' ? `w:${tg.x},${tg.y}` : `e:${tg.dir}:${tg.region}`) ?? []).map((r) => `${fromRegion}>${r}`);
   if (c.target.kind === 'item') pendingItem = { name: (c.target as { name: string }).name, sig: itemSig(ctx) };
   if (c.target.kind === 'toss') pendingItem = { name: 'BAG (toss)', sig: itemSig(ctx) };
   const res = await execute(ctx, c, agent);

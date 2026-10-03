@@ -161,3 +161,5 @@ Valid, finite option weights in [0, 1] are normalized when their total is positi
 Single-option questions are resolved by the shared request client without inference, including direct overworld requests. These are controller selections, with no fabricated model probabilities or model-call counts. Mixed requests send only questions that need a decision to the model.
 
 The viewer shows input tokens for the latest model call and each uncached decision, alongside the cumulative total across calls since the harness restart. Cached decisions do not replace the latest-call token count.
+
+Navigation keeps separate crossings into distinct areas of neighboring maps and describes CUT when it unlocks a useful exit. Route distances exclude entry into Saffron until the guards accept a drink (or a drink is available in the bag). Travel milestones check individual badges rather than comparing the badge bitmask numerically. When an overworld choice repeats without progress, recovery prefers useful, less-repeated actions and preserves model probability ranking instead of randomly choosing unrelated interactions.
