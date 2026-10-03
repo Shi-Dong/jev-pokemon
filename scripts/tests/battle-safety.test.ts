@@ -49,3 +49,26 @@ test('repeated battles and menus call the backend; overworld cache is purpose-sc
   assert.equal(requests, 9);
   assert.equal(jev.cacheHits, 1);
 });
+
+test('direct ask bypasses model for singleton choices and rejects empty choices', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jev-singleton-'));
+  const jev = new Jev({mode: 'mock', minIntervalMs: 0, logFile: path.join(dir, 'calls.jsonl')});
+  let requests = 0;
+  jev.backend.evaluate = async (req) => {
+    requests++;
+    assert.deepEqual(Object.keys(req.questions), ['multi']);
+    return {answers: {multi: {type: 'choice', choice: 'B'}}, usage: {inputTokens: 7}};
+  };
+  const single = {type: 'choice' as const, instructions: 'Choose', criteria: {'Enter ROUTE_6': 'Exit'}};
+  const forced = await jev.ask('overworld', {}, {decision: single});
+  assert.equal(forced.picked.decision, 'Enter ROUTE_6');
+  assert.deepEqual(forced.answers.decision, {type: 'choice', choice: 'Enter ROUTE_6'});
+  assert.equal(requests, 0);
+  assert.equal(jev.calls, 0);
+  assert.equal(jev.cacheHits, 0);
+  const mixed = await jev.ask('battle', {}, {one: single, multi: {type: 'choice', instructions: 'Choose', criteria: {A: 'A', B: 'B'}}});
+  assert.deepEqual(mixed.picked, {multi: 'B', one: 'Enter ROUTE_6'});
+  assert.equal(requests, 1);
+  await assert.rejects(jev.ask('overworld', {}, {decision: {...single, criteria: {}}}), /No legal options/);
+  assert.equal(requests, 1);
+});

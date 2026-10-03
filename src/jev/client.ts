@@ -70,6 +70,25 @@ export class Jev {
   }
 
   async ask(purpose: string, state: JevInput, questions: Record<string, JevQuestion>) {
+    // No model decision exists when there is only one legal choice.
+    // Put this here so direct ask() callers cannot bypass the shortcut.
+    const forced: Record<string, JevAnswer> = {};
+    const pending: Record<string, JevQuestion> = {};
+    for (const [id, question] of Object.entries(questions)) {
+      if (question.type === 'choice') {
+        const keys = Object.keys(question.criteria);
+        if (!keys.length) throw new Error('No legal options');
+        if (keys.length === 1) {
+          forced[id] = { type: 'choice', choice: keys[0] };
+          continue;
+        }
+      }
+      pending[id] = question;
+    }
+    if (!Object.keys(pending).length) {
+      const picked = Object.fromEntries(Object.entries(forced).map(([id, a]) => [id, (a as { choice: string }).choice]));
+      return { picked, answers: forced };
+    }
     const key = crypto.createHash('sha1').update(JSON.stringify([purpose, state, questions])).digest('hex');
     const t0 = Date.now();
     // loop-protection sampling only applies to where-to-go decisions; menus, battles and the PC use Jev's top pick
@@ -81,7 +100,7 @@ export class Jev {
     if (!res) {
       await this.throttle();
       for (let attempt = 0; ; attempt++) {
-        try { res = await this.withIdle(this.backend.evaluate({ state, questions })); break; }
+        try { res = await this.withIdle(this.backend.evaluate({ state, questions: pending })); break; }
         catch (e) {
           if (attempt >= 4) throw e;
           await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
@@ -93,6 +112,7 @@ export class Jev {
       if (this.cache.size > 500) this.cache.delete(this.cache.keys().next().value!);
     } else this.cacheHits++;
 
+    res = { ...res, answers: { ...res.answers, ...forced } };
     const picked: Record<string, string | number> = {};
     for (const [id, a] of Object.entries(res.answers)) {
       if (a.type === 'choice') picked[id] = explore && a.probabilities ? sample(flatten(a.probabilities)) : a.choice;
