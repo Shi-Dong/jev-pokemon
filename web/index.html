@@ -68,7 +68,8 @@
         <div class="stat" title="Elapsed decision request time, including rate-limit waits and retries. Cached results do not make a model call."><b id="latency">Waiting…</b><span>latest model call</span></div>
         <div class="stat"><b id="calls">0</b><span>Jev calls</span></div>
         <div class="stat"><b id="cache">0</b><span>cache hits</span></div>
-        <div class="stat"><b id="tokens">0</b><span>input tokens</span></div>
+        <div class="stat"><b id="callTokens">Waiting…</b><span>latest call input tokens</span></div>
+        <div class="stat" title="Cumulative input tokens across calls since the last harness restart."><b id="tokens">0</b><span>total input tokens across calls</span></div>
         <div class="stat"><b id="badges">0</b><span>badges</span></div>
       </div>
     </div>
@@ -131,6 +132,7 @@ function status(s) {
 }
 function formatLatency(ms) { return ms < 1000 ? Math.round(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s'; }
 function decision({ r, stats }) {
+  if (!r.cached && Number.isFinite(r.inputTokens)) $('callTokens').textContent = r.inputTokens.toLocaleString();
   if (!r.cached && Number.isFinite(r.latencyMs)) $('latency').textContent = formatLatency(r.latencyMs);
   $('calls').textContent = stats.calls; $('cache').textContent = stats.cacheHits; $('tokens').textContent = stats.inputTokens.toLocaleString();
   const a = Object.values(r.answers)[0];
@@ -138,7 +140,7 @@ function decision({ r, stats }) {
   const probs = a && a.probabilities ? Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]).slice(0, 5) : [];
   const el = document.createElement('div');
   el.className = 'dec';
-  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'Cached · no model call' : 'Call time: ' + formatLatency(r.latencyMs) + ' (' + Math.round(r.latencyMs) + ' ms)'}</span></div>
+  el.innerHTML = `<div class="head"><span>#${r.n} · ${esc(r.purpose)}</span><span>${r.cached ? 'Cached · no model call' : 'Call time: ' + formatLatency(r.latencyMs) + ' (' + Math.round(r.latencyMs) + ' ms) · Input: ' + (Number.isFinite(r.inputTokens) ? r.inputTokens.toLocaleString() : '—') + ' tokens'}</span></div>
     <div class="pick">${esc(picked)}</div>` + probs.map(([k, p]) => `<div class="opt ${k === picked ? 'on' : ''}"><div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i><span>${esc(k)}</span></div><div class="num">${(p * 100).toFixed(0)}%</div></div>`).join('');
   $('feed').prepend(el);
   while ($('feed').children.length > 60) $('feed').lastChild.remove();

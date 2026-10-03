@@ -159,3 +159,5 @@ The controller reads Disable from live game memory and excludes disabled moves a
 Valid, finite option weights in [0, 1] are normalized when their total is positive, even if the total differs from one. Large corrections emit a probability-normalization warning; original endpoint responses remain in the raw response log. Malformed JSON, duplicate/missing/unknown labels, negative or out-of-range weights, and all-zero outputs are rejected.
 
 Single-option questions are resolved by the shared request client without inference, including direct overworld requests. These are controller selections, with no fabricated model probabilities or model-call counts. Mixed requests send only questions that need a decision to the model.
+
+The viewer shows input tokens for the latest model call and each uncached decision, alongside the cumulative total across calls since the harness restart. Cached decisions do not replace the latest-call token count.
